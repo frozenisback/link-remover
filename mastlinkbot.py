@@ -1,5 +1,6 @@
 import re
 import asyncio
+import aiohttp
 from telethon import TelegramClient, events, Button
 from telethon.errors import (
     MessageDeleteForbiddenError, MessageNotModifiedError,
@@ -9,8 +10,8 @@ from telethon.errors import (
 # ------------------------------
 # CONFIG
 # ------------------------------
-API_ID = 29568441  # <-- CHANGE THIS
-API_HASH = "b32ec0fb66d22da6f77d355fbace4f2a"  # <-- CHANGE THIS
+API_ID = 29568441
+API_HASH = "b32ec0fb66d22da6f77d355fbace4f2a"
 BOT_TOKEN = "8083363256:AAEmJvaHO_3ecDWHT26QTdvOpjhOXl2LvtE"
 
 # EXACT same protected IDs
@@ -34,9 +35,11 @@ async def delete_and_notify(event, from_user, reason):
     except MessageDeleteForbiddenError:
         pass
 
+    name = getattr(from_user, "first_name", None) or getattr(from_user, "title", None) or "User"
+
     await client.send_message(
         event.chat_id,
-        f'<a href="tg://user?id={from_user.id}">{from_user.first_name}</a>, your message was deleted because {reason}',
+        f'<a href="tg://user?id={from_user.id}">{name}</a>, your message was deleted because {reason}',
         parse_mode='html',
         buttons=[
             [Button.url("✨Protect your group 💕", "https://t.me/linkremoverlbot?startgroup=true")]
@@ -45,10 +48,25 @@ async def delete_and_notify(event, from_user, reason):
 
 
 # ------------------------------
-# EXACT JS LOGIC → IN PYTHON
+# EXACT JS LOGIC → IN PYTHON + RAW HTTP API FIX
 # ------------------------------
+async def resolve_username_via_http(username):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChat?chat_id=@{username}"
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            try:
+                data = await resp.json()
+            except:
+                return None
+
+            if not data.get("ok"):
+                return None
+
+            return data.get("result", None)
+
+
 async def checkAndHandleContent(event, text, from_user):
-    # Skip protected users EXACTLY same logic
     if from_user.id in PROTECTED_USER_IDS:
         print(f"Skipping protected user {from_user.id}")
         return
@@ -56,48 +74,42 @@ async def checkAndHandleContent(event, text, from_user):
     isDeleted = False
     reason = ""
 
-    # 1) URL check
     if urlRegex.search(text):
         isDeleted = True
         reason = "it contained a URL."
 
-    # 2) t.me link check
     if tmeRegex.search(text):
         isDeleted = True
         reason = "it contained a link."
 
-    # 3) Mention check
     mentions = mentionRegex.findall(text)
     if mentions:
         for mention in mentions:
             username = mention[1:]
 
-            # Ends with bot
+            # Ends with bot immediately
             if username.lower().endswith("bot"):
                 isDeleted = True
                 reason = 'it mentioned a "bot".'
                 break
 
-            # EXACTLY replicate getChat API behavior
-            try:
-                ent = await client.get_entity(username)
+            # ---- RAW HTTP API CHECK ----
+            entity = await resolve_username_via_http(username)
 
-                # If channel / group / supergroup
-                if ent.__class__.__name__ in ["Channel", "Chat"]:
+            if entity:
+                etype = entity.get("type", "")
+
+                if etype in ["channel", "supergroup", "group"]:
                     isDeleted = True
                     reason = "it mentioned a group or channel."
                     break
 
-                # If bot user
-                if hasattr(ent, "bot") and ent.bot:
+                if etype == "bot":
                     isDeleted = True
-                    reason = "it mentioned a group or channel."  # JS code says same
+                    reason = 'it mentioned a "bot".'
                     break
+            # ----------------------------
 
-            except (UsernameNotOccupiedError, UsernameInvalidError, RPCError):
-                pass  # same as JS failing quietly
-
-    # Delete + notify
     if isDeleted:
         await delete_and_notify(event, from_user, reason)
 
@@ -127,7 +139,7 @@ async def start_handler(event):
 
 
 # ------------------------------
-# CALLBACK QUERIES
+# CALLBACK QUERIES (UNCHANGED)
 # ------------------------------
 @client.on(events.CallbackQuery)
 async def callback_handler(event):
@@ -184,7 +196,7 @@ async def callback_handler(event):
 
 
 # ------------------------------
-# MAIN MESSAGE HANDLER (JS LOGIC)
+# MAIN MESSAGE HANDLER
 # ------------------------------
 @client.on(events.NewMessage)
 async def message_handler(event):
