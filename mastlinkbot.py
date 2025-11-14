@@ -1,10 +1,5 @@
 import re
 import asyncio
-import threading
-import time
-from aiohttp import web
-import aiohttp
-
 from telethon import TelegramClient, events, Button
 from telethon.errors import (
     MessageDeleteForbiddenError, MessageNotModifiedError,
@@ -14,114 +9,101 @@ from telethon.errors import (
 # ------------------------------
 # CONFIG
 # ------------------------------
-API_ID = 29568441
-API_HASH = "b32ec0fb66d22da6f77d355fbace4f2a"
+API_ID = 29568441  # <-- CHANGE THIS
+API_HASH = "b32ec0fb66d22da6f77d355fbace4f2a"  # <-- CHANGE THIS
 BOT_TOKEN = "8083363256:AAEmJvaHO_3ecDWHT26QTdvOpjhOXl2LvtE"
 
+# EXACT same protected IDs
 PROTECTED_USER_IDS = [777000, 5268762773]
 
+# EXACT same regex patterns
 urlRegex = re.compile(r"(https?:\/\/[^\s]+)")
 tmeRegex = re.compile(r"(t\.me\/[^‌]+)")
 mentionRegex = re.compile(r"@\w+")
 
-# Create Telethon client (NOT started yet)
-client = TelegramClient("linkremo2ver_bot", API_ID, API_HASH)
+# Telethon client
+client = TelegramClient("linkremo2ver_bot", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
 
 # ------------------------------
-# Delete & Notify
+# Delete Message + Notify
 # ------------------------------
 async def delete_and_notify(event, from_user, reason):
     try:
         await event.delete()
-    except:
+    except MessageDeleteForbiddenError:
         pass
 
-    try:
-        await client.send_message(
-            event.chat_id,
-            f'<a href="tg://user?id={from_user.id}">{from_user.first_name}</a>, your message was deleted because {reason}',
-            parse_mode='html',
-            buttons=[[Button.url("✨Protect your group 💕", "https://t.me/linkremoverlbot?startgroup=true")]]
-        )
-    except:
-        pass
+    await client.send_message(
+        event.chat_id,
+        f'<a href="tg://user?id={from_user.id}">{from_user.first_name}</a>, your message was deleted because {reason}',
+        parse_mode='html',
+        buttons=[
+            [Button.url("✨Protect your group 💕", "https://t.me/linkremoverlbot?startgroup=true")]
+        ]
+    )
 
 
 # ------------------------------
-# Username Validator
-# ------------------------------
-def is_valid_username(username):
-    if not username:
-        return False
-
-    username = username.strip("_").strip()
-
-    if len(username) < 5 or len(username) > 32:
-        return False
-
-    if not re.fullmatch(r"[A-Za-z0-9_]+", username):
-        return False
-
-    if set(username) == {"_"}:
-        return False
-
-    return True
-
-
-# ------------------------------
-# EXACT JS LOGIC → Python
+# EXACT JS LOGIC → IN PYTHON
 # ------------------------------
 async def checkAndHandleContent(event, text, from_user):
+    # Skip protected users EXACTLY same logic
     if from_user.id in PROTECTED_USER_IDS:
+        print(f"Skipping protected user {from_user.id}")
         return
 
     isDeleted = False
     reason = ""
 
+    # 1) URL check
     if urlRegex.search(text):
         isDeleted = True
         reason = "it contained a URL."
 
+    # 2) t.me link check
     if tmeRegex.search(text):
         isDeleted = True
         reason = "it contained a link."
 
+    # 3) Mention check
     mentions = mentionRegex.findall(text)
     if mentions:
         for mention in mentions:
             username = mention[1:]
 
+            # Ends with bot
             if username.lower().endswith("bot"):
                 isDeleted = True
                 reason = 'it mentioned a "bot".'
                 break
 
-            if not is_valid_username(username):
-                continue
-
+            # EXACTLY replicate getChat API behavior
             try:
                 ent = await client.get_entity(username)
 
+                # If channel / group / supergroup
                 if ent.__class__.__name__ in ["Channel", "Chat"]:
                     isDeleted = True
                     reason = "it mentioned a group or channel."
                     break
 
+                # If bot user
                 if hasattr(ent, "bot") and ent.bot:
                     isDeleted = True
-                    reason = "it mentioned a group or channel."
+                    reason = "it mentioned a group or channel."  # JS code says same
                     break
 
-            except:
-                continue
+            except (UsernameNotOccupiedError, UsernameInvalidError, RPCError):
+                pass  # same as JS failing quietly
 
+    # Delete + notify
     if isDeleted:
         await delete_and_notify(event, from_user, reason)
 
 
 # ------------------------------
-# Commands & Callbacks
+# /start COMMAND (EXACT SAME)
 # ------------------------------
 @client.on(events.NewMessage(pattern="/start"))
 async def start_handler(event):
@@ -144,6 +126,9 @@ async def start_handler(event):
     )
 
 
+# ------------------------------
+# CALLBACK QUERIES
+# ------------------------------
 @client.on(events.CallbackQuery)
 async def callback_handler(event):
     data = event.data.decode("utf-8")
@@ -151,7 +136,18 @@ async def callback_handler(event):
     if data == "help":
         helpMessage = (
             "<b>👋 Hello, I'm <i>LinkRemover Bot</i> 🤖!</b>\n\n"
-            "<blockquote>🔒 Keeps your group safe.</blockquote>\n"
+            "<blockquote>🔒 Keep your group safe from unwanted links and bot spam!</blockquote>\n"
+            "<blockquote>🚀 Automatically detects and removes links, bot usernames, and group/channel mentions.</blockquote>\n\n"
+            "<b>✨ Features:</b>\n"
+            "<blockquote>✅ Deletes messages containing links (URLs).</blockquote>\n"
+            "<blockquote>✅ Removes mentions of <u>bots</u>, <u>channels</u>, or <u>groups</u>.</blockquote>\n"
+            "<blockquote>✅ Lightweight and efficient.</blockquote>\n\n"
+            "<b>📖 How to Use:</b>\n"
+            "<blockquote>➤ Add me to your group.</blockquote>\n"
+            "<blockquote>➤ Make me an admin.</blockquote>\n\n"
+            "<b>🔗 Links:</b>\n"
+            "<blockquote>💬 <a href='https://t.me/Frozensupport1'>Support Group</a></blockquote>\n"
+            "<blockquote>🌐 <a href='https://t.me/linkremoverallbot?startgroup=true'>Add Me to Your Group</a></blockquote>\n\n"
             "<b>Happy moderating! 🎉</b>"
         )
 
@@ -161,13 +157,14 @@ async def callback_handler(event):
                 parse_mode='html',
                 buttons=[[Button.inline("Back", data="back_to_start")]]
             )
-        except:
+        except MessageNotModifiedError:
             pass
 
     elif data == "back_to_start":
         welcomeMessage = (
             "👋 Welcome to LinkRemover Bot! \n\n"
-            "<blockquote>Protect your groups from unwanted links and bot mentions.</blockquote>"
+            "<blockquote>🔒 Protect your groups from unwanted links and bot mentions.</blockquote> \n\n"
+            "Select add me below:"
         )
 
         try:
@@ -182,12 +179,12 @@ async def callback_handler(event):
                     [Button.url("🆘Support🆘", "https://t.me/Frozensupport1")]
                 ]
             )
-        except:
+        except MessageNotModifiedError:
             pass
 
 
 # ------------------------------
-# Main Message Handler
+# MAIN MESSAGE HANDLER (JS LOGIC)
 # ------------------------------
 @client.on(events.NewMessage)
 async def message_handler(event):
@@ -198,65 +195,9 @@ async def message_handler(event):
     from_user = await event.get_sender()
 
     print(f"Received from {from_user.username}: {text}")
+
     await checkAndHandleContent(event, text, from_user)
 
 
-# ------------------------------
-# TELEGRAM PING + HTTP SERVER
-# ------------------------------
-async def telegram_ping():
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getMe"
-
-    try:
-        start = time.time()
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
-                await resp.text()
-        ping = (time.time() - start) * 1000
-        return round(ping, 2)
-    except:
-        return None
-
-
-async def http_handler(request):
-    ping = await telegram_ping()
-    return web.json_response({"ok": True, "ping_ms": ping})
-
-
-async def start_http_server():
-    app = web.Application()
-    app.router.add_get("/", http_handler)
-
-    runner = web.AppRunner(app)
-    await runner.setup()
-
-    site = web.TCPSite(runner, "0.0.0.0", 8000)
-    print("HTTP server running on port 8000...")
-    await site.start()
-
-
-# ------------------------------
-# THREAD: Telethon Loop
-# ------------------------------
-def telethon_thread():
-    with client:
-        print("Telethon bot running...")
-        client.run_until_disconnected()
-
-
-# ------------------------------
-# MAIN
-# ------------------------------
-async def main():
-    # start telethon in background thread
-    threading.Thread(target=telethon_thread, daemon=True).start()
-
-    # start http server in main asyncio loop
-    await start_http_server()
-
-    # keep server alive
-    while True:
-        await asyncio.sleep(3600)
-
-
-asyncio.run(main())
+print("Bot running with Telethon (long polling)...")
+client.run_until_disconnected()
