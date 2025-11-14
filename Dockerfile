@@ -12,7 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy files
 COPY requirements.txt /app/
 COPY mastlinkbot.py /app/
+COPY server.py /app/
 COPY start.sh /app/
+
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
