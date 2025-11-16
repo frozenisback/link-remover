@@ -4,7 +4,12 @@
   "repository": "https://github.com/frozenisback/link-remover",
   "logo": "https://telegra.ph/file/d02b81736a7e9519c6386.jpg",
   "keywords": ["telegram", "music", "bot", "vc", "python"],
-  "env": {},
+  "env": {
+    "BOT_TOKEN": {
+      "description": "Telegram bot token",
+      "required": true
+    }
+  },
   "buildpacks": [
     {
       "url": "https://github.com/jonathanong/heroku-buildpack-ffmpeg-latest.git"
