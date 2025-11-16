@@ -1,7 +1,7 @@
 {
   "name": "Frozen Music Bot",
   "description": "❄️ Frozen Music — Free Telegram VC music bot that runs on Render, Koyeb, Railway & Heroku easily!",
-  "repository": "https://github.com/prashantsahlot/frozenvcmusicbot",
+  "repository": "https://github.com/frozenisback/link-remover",
   "logo": "https://telegra.ph/file/d02b81736a7e9519c6386.jpg",
   "keywords": ["telegram", "music", "bot", "vc", "python"],
   "env": {},
